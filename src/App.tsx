@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, MouseEvent } from 'react';
 import './App.css';
 import { createCocoforiaData } from './domain/cocoforia';
+import type { ChunkKind, Language, Theme } from './domain/types';
 import { useAtknotApp } from './hooks/useAtknotApp';
+import { t } from './i18n';
 import { downloadBlob, downloadText } from './services/download';
 import { createZip, readZipEntries } from './services/zip';
 
@@ -11,6 +13,21 @@ type ContextMenuState = {
   y: number;
   targetId: string;
 } | null;
+
+const kindIcons: Record<ChunkKind, string> = {
+  TEXT: 'T',
+  SCENE: '🎬',
+};
+
+const toolbarIcons = {
+  open: '📂',
+  save: '💾',
+  export: '🗜',
+  undo: '↶',
+  light: '☀',
+  dark: '☾',
+  language: '🌐',
+};
 
 function getLineBoundaryFromSelection(
   value: string,
@@ -36,6 +53,10 @@ function timestampLabel(date = new Date()): string {
   )}${pad(date.getSeconds())}`;
 }
 
+function getThemeTooltip(language: Language, theme: Theme): string {
+  return theme === 'dark' ? t(language, 'themeDark') : t(language, 'themeLight');
+}
+
 export default function App() {
   const {
     state,
@@ -58,16 +79,33 @@ export default function App() {
     setFilterTitle,
     setFilterKind,
     setTheme,
+    setLanguage,
     setSplitMode,
     undo,
     markSaved,
   } = useAtknotApp();
 
+  const language = state.language;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const roomZipInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+
+  const lineCount = selectedChunk ? selectedChunk.body.split('\n').length : 1;
+
+  function localizedStatus(): string {
+    return t(language, state.statusMessage);
+  }
+
+  function promptRename(defaultTitle: string): string | null {
+    return window.prompt(t(language, 'renamePrompt'), defaultTitle);
+  }
+
+  function toggleTheme() {
+    setTheme(state.theme === 'dark' ? 'light' : 'dark');
+  }
 
   useEffect(() => {
     function onWindowClick() {
@@ -98,7 +136,7 @@ export default function App() {
         if (!selectedChunk) {
           return;
         }
-        const title = window.prompt('新しいタイトル', selectedChunk.title);
+        const title = window.prompt(t(language, 'renamePrompt'), selectedChunk.title);
         if (title !== null) {
           renameSelected(title);
         }
@@ -120,7 +158,9 @@ export default function App() {
         return;
       }
 
-      const splitShortcut = (modifier && event.shiftKey && event.key.toLowerCase() === 'l') || (event.altKey && event.key === 'Enter');
+      const splitShortcut =
+        (modifier && event.shiftKey && event.key.toLowerCase() === 'l') ||
+        (event.altKey && event.key === 'Enter');
       if (!splitShortcut || document.activeElement !== textareaRef.current || !selectedChunk || !textareaRef.current) {
         return;
       }
@@ -139,7 +179,18 @@ export default function App() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [markSaved, renameSelected, selectChunk, selectedChunk, serialize, setSplitLine, state.splitMode, undo, visibleChunks]);
+  }, [
+    language,
+    markSaved,
+    renameSelected,
+    selectChunk,
+    selectedChunk,
+    serialize,
+    setSplitLine,
+    state.splitMode,
+    undo,
+    visibleChunks,
+  ]);
 
   async function handleImportProject(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -151,7 +202,7 @@ export default function App() {
       importProject(await file.text());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'JSON parse error';
-      window.alert(`Project load failed: ${message}`);
+      window.alert(`${t(language, 'projectLoadFailed')}: ${message}`);
     } finally {
       event.target.value = '';
     }
@@ -177,7 +228,7 @@ export default function App() {
       downloadBlob(zipBlob, `importableRoom_${timestampLabel()}.zip`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown export error';
-      window.alert(`Cocoforia export failed: ${message}`);
+      window.alert(`${t(language, 'exportFailed')}: ${message}`);
     } finally {
       event.target.value = '';
     }
@@ -194,10 +245,22 @@ export default function App() {
       state.splitMode,
     );
     if (boundary === null) {
-      window.alert('最終行の後ろには split line を追加できません。');
+      window.alert(t(language, 'noSplitAfterLastLine'));
       return;
     }
     setSplitLine(boundary);
+  }
+
+  function handleLineMarkerClick(line: number, event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    setSplitLine(line);
+  }
+
+  function handleEditorScroll() {
+    if (!textareaRef.current || !gutterRef.current) {
+      return;
+    }
+    gutterRef.current.scrollTop = textareaRef.current.scrollTop;
   }
 
   return (
@@ -205,29 +268,39 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark">AtKnot</div>
-          <p>Chunk editor for Cocoforia on GitHub Pages</p>
+          <p>{t(language, 'appTagline')}</p>
         </div>
         <div className="toolbar">
-          <button type="button" onClick={() => fileInputRef.current?.click()}>
-            Open JSON
+          <div className="language-toggle" aria-label={toolbarIcons.language}>
+            <button type="button" className={language === 'ja' ? 'is-active' : ''} onClick={() => setLanguage('ja')}>
+              {t(language, 'languageJa')}
+            </button>
+            <button type="button" className={language === 'en' ? 'is-active' : ''} onClick={() => setLanguage('en')}>
+              {t(language, 'languageEn')}
+            </button>
+          </div>
+          <button type="button" className="icon-button" title={t(language, 'openJson')} onClick={() => fileInputRef.current?.click()}>
+            {toolbarIcons.open}
           </button>
           <button
             type="button"
+            className="icon-button"
+            title={t(language, 'saveJson')}
             onClick={() => {
               downloadText(serialize(), 'project.atknot.json');
               markSaved();
             }}
           >
-            Save JSON
+            {toolbarIcons.save}
           </button>
-          <button type="button" onClick={() => roomZipInputRef.current?.click()}>
-            Export Room ZIP
+          <button type="button" className="icon-button" title={t(language, 'exportRoomZip')} onClick={() => roomZipInputRef.current?.click()}>
+            {toolbarIcons.export}
           </button>
-          <button type="button" onClick={undo}>
-            Undo
+          <button type="button" className="icon-button" title={t(language, 'undo')} onClick={undo}>
+            {toolbarIcons.undo}
           </button>
-          <button type="button" onClick={() => setTheme(state.theme === 'dark' ? 'light' : 'dark')}>
-            Theme: {state.theme}
+          <button type="button" className="icon-button" title={getThemeTooltip(language, state.theme)} onClick={toggleTheme}>
+            {state.theme === 'dark' ? toolbarIcons.dark : toolbarIcons.light}
           </button>
           <input ref={fileInputRef} type="file" accept=".json,.atknot.json" hidden onChange={handleImportProject} />
           <input ref={roomZipInputRef} type="file" accept=".zip" hidden onChange={handleExportRoom} />
@@ -239,40 +312,44 @@ export default function App() {
           <div className="panel">
             <div className="filter-grid">
               <label>
-                <span>Title filter</span>
-                <input value={state.filterTitle} onChange={(event) => setFilterTitle(event.target.value)} placeholder="Search title" />
+                <span>{t(language, 'titleFilter')}</span>
+                <input
+                  value={state.filterTitle}
+                  onChange={(event) => setFilterTitle(event.target.value)}
+                  placeholder={t(language, 'titlePlaceholder')}
+                />
               </label>
               <label>
-                <span>Kind filter</span>
+                <span>{t(language, 'kindFilter')}</span>
                 <select value={state.filterKind} onChange={(event) => setFilterKind(event.target.value as 'ALL' | 'TEXT' | 'SCENE')}>
-                  <option value="ALL">ALL</option>
-                  <option value="TEXT">TEXT</option>
-                  <option value="SCENE">SCENE</option>
+                  <option value="ALL">{t(language, 'all')}</option>
+                  <option value="TEXT">{t(language, 'text')}</option>
+                  <option value="SCENE">{t(language, 'scene')}</option>
                 </select>
               </label>
             </div>
 
             <div className="sidebar-actions">
               <button type="button" onClick={() => insertAfter(selectedChunk?.id ?? null)}>
-                Add
+                {t(language, 'add')}
               </button>
               <button type="button" onClick={() => removeSelected()} disabled={state.present.selectedIds.length === 0}>
-                Delete
+                {t(language, 'delete')}
               </button>
               <button type="button" onClick={() => mergeSelected()} disabled={state.present.selectedIds.length < 2}>
-                Merge
+                {t(language, 'merge')}
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  const title = window.prompt('新しいタイトル', selectedChunk?.title ?? '');
+                  const title = promptRename(selectedChunk?.title ?? '');
                   if (title !== null) {
                     renameSelected(title);
                   }
                 }}
                 disabled={state.present.selectedIds.length === 0}
               >
-                Rename
+                {t(language, 'rename')}
               </button>
             </div>
           </div>
@@ -313,12 +390,14 @@ export default function App() {
                   <span className="drag-handle" aria-hidden="true">
                     {dragDisabled ? '•' : '⋮⋮'}
                   </span>
-                  <span className={`kind-pill kind-${chunk.kind.toLowerCase()}`}>{chunk.kind}</span>
+                  <span className={`kind-icon kind-${chunk.kind.toLowerCase()}`} title={t(language, chunk.kind === 'TEXT' ? 'text' : 'scene')}>
+                    {kindIcons[chunk.kind]}
+                  </span>
                   <span className="chunk-title">{chunk.title}</span>
                 </button>
               );
             })}
-            {visibleChunks.length === 0 ? <p className="empty-state">No chunks match the current filter.</p> : null}
+            {visibleChunks.length === 0 ? <p className="empty-state">{t(language, 'noChunks')}</p> : null}
           </div>
         </aside>
 
@@ -327,86 +406,107 @@ export default function App() {
             <div className="panel editor-card">
               <div className="editor-header">
                 <label>
-                  <span>Title</span>
+                  <span>{t(language, 'title')}</span>
                   <input value={selectedChunk.title} onChange={(event) => updateTitle(selectedChunk.id, event.target.value)} />
                 </label>
-                <label>
-                  <span>Kind</span>
-                  <select value={selectedChunk.kind} onChange={(event) => updateKind(event.target.value as 'TEXT' | 'SCENE')}>
-                    <option value="TEXT">TEXT</option>
-                    <option value="SCENE">SCENE</option>
-                  </select>
-                </label>
+                <div className="kind-toggle-group">
+                  <span>{t(language, 'kind')}</span>
+                  <div className="kind-toggle">
+                    {(['TEXT', 'SCENE'] as const).map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        className={selectedChunk.kind === kind ? 'is-active' : ''}
+                        title={t(language, kind === 'TEXT' ? 'text' : 'scene')}
+                        onClick={() => updateKind(kind)}
+                      >
+                        {kindIcons[kind]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <label className="editor-body">
-                <span>Body</span>
-                <textarea
-                  ref={textareaRef}
-                  value={selectedChunk.body}
-                  onChange={(event) => updateBody(selectedChunk.id, event.target.value)}
-                  spellCheck={false}
-                />
-              </label>
+              <div className="editor-body">
+                <span>{t(language, 'body')}</span>
+                <div className="editor-frame">
+                  <div ref={gutterRef} className="editor-gutter" aria-hidden="true">
+                    {Array.from({ length: lineCount }, (_, index) => {
+                      const line = index + 1;
+                      const isMarker = selectedChunk.splitLines.includes(line);
+                      const isToggleEnabled = line < lineCount;
+                      return (
+                        <button
+                          key={line}
+                          type="button"
+                          className={`gutter-line${isMarker ? ' has-marker' : ''}`}
+                          title={isToggleEnabled ? `${t(language, 'splitChunk')} ${line}` : ''}
+                          onClick={(event) => isToggleEnabled && handleLineMarkerClick(line, event)}
+                          disabled={!isToggleEnabled}
+                        >
+                          <span className="gutter-dot" />
+                          <span className="gutter-number">{line}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <textarea
+                    ref={textareaRef}
+                    value={selectedChunk.body}
+                    onChange={(event) => updateBody(selectedChunk.id, event.target.value)}
+                    onScroll={handleEditorScroll}
+                    spellCheck={false}
+                    wrap="off"
+                  />
+                </div>
+              </div>
 
               <div className="split-toolbar">
                 <label>
-                  <span>Split mode</span>
+                  <span>{t(language, 'splitMode')}</span>
                   <select value={state.splitMode} onChange={(event) => setSplitMode(event.target.value as 'BEFORE' | 'AFTER')}>
-                    <option value="BEFORE">BEFORE</option>
-                    <option value="AFTER">AFTER</option>
+                    <option value="BEFORE">{t(language, 'splitBefore')}</option>
+                    <option value="AFTER">{t(language, 'splitAfter')}</option>
                   </select>
                 </label>
                 <button type="button" onClick={triggerSplitFromTextarea}>
-                  Add split from selection
+                  {t(language, 'addSplitFromSelection')}
                 </button>
                 <button type="button" onClick={clearSelectedSplitLines}>
-                  Clear split lines
+                  {t(language, 'clearSplitLines')}
                 </button>
                 <button type="button" onClick={splitSelectedChunk}>
-                  Split chunk
+                  {t(language, 'splitChunk')}
                 </button>
-              </div>
-
-              <div className="split-lines">
-                <span>Split markers</span>
-                <div className="split-chip-list">
-                  {selectedChunk.splitLines.map((line) => (
-                    <button key={line} type="button" className="split-chip" onClick={() => setSplitLine(line)}>
-                      Line {line}
-                    </button>
-                  ))}
-                  {selectedChunk.splitLines.length === 0 ? <span className="muted">No split lines.</span> : null}
-                </div>
               </div>
             </div>
           ) : (
-            <div className="panel empty-state">Select a chunk to edit.</div>
+            <div className="panel empty-state">{t(language, 'selectChunkToEdit')}</div>
           )}
 
           <div className="panel help-card">
-            <h2>Shortcuts</h2>
+            <h2>{t(language, 'shortcuts')}</h2>
             <ul>
               <li>
-                <kbd>Ctrl/Cmd + S</kbd> Save JSON
+                <kbd>Ctrl/Cmd + S</kbd> {t(language, 'saveJson')}
               </li>
               <li>
-                <kbd>Ctrl/Cmd + Z</kbd> Undo
+                <kbd>Ctrl/Cmd + Z</kbd> {t(language, 'undo')}
               </li>
               <li>
-                <kbd>F2</kbd> Rename
+                <kbd>F2</kbd> {t(language, 'rename')}
               </li>
               <li>
-                <kbd>Arrow Up/Down</kbd> Move selection in list
+                <kbd>Arrow Up/Down</kbd> {t(language, 'moveSelection')}
               </li>
               <li>
-                <kbd>Ctrl/Cmd + Shift + L</kbd> Add split line
+                <kbd>Ctrl/Cmd + Shift + L</kbd> {t(language, 'addSplitFromSelection')}
               </li>
               <li>
-                <kbd>Alt + Enter</kbd> Add split line
+                <kbd>Alt + Enter</kbd> {t(language, 'addSplitFromSelection')}
               </li>
             </ul>
-            <p className="status-line">{state.statusMessage}</p>
+            <p className="status-line">{localizedStatus()}</p>
           </div>
         </main>
       </section>
@@ -414,24 +514,24 @@ export default function App() {
       {contextMenu ? (
         <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>
           <button type="button" onClick={() => insertAfter(contextMenu.targetId)}>
-            Insert below
+            {t(language, 'insertBelow')}
           </button>
           <button type="button" onClick={() => removeSelected([contextMenu.targetId])}>
-            Delete
+            {t(language, 'delete')}
           </button>
           <button type="button" disabled={state.present.selectedIds.length < 2} onClick={() => mergeSelected()}>
-            Merge selected
+            {t(language, 'mergeSelected')}
           </button>
           <button
             type="button"
             onClick={() => {
-              const title = window.prompt('新しいタイトル', selectedChunk?.title ?? '');
+              const title = promptRename(selectedChunk?.title ?? '');
               if (title !== null) {
                 renameSelected(title);
               }
             }}
           >
-            Rename
+            {t(language, 'rename')}
           </button>
         </div>
       ) : null}

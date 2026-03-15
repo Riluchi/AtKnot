@@ -14,13 +14,14 @@ import {
   updateChunk,
 } from '../domain/chunks';
 import { createDefaultProject, normalizeChunk, parsePersistedProject, serializeProject } from '../domain/project';
-import type { AppState, Chunk, ChunkKind, FilterKind, PresentState, Theme } from '../domain/types';
+import type { AppState, Chunk, ChunkKind, FilterKind, Language, PresentState, Theme } from '../domain/types';
 import { loadAutosave, saveAutosave } from '../services/storage';
 
 type Action =
   | { type: 'select'; ids: string[]; anchorId: string | null }
   | { type: 'setFilters'; title: string; kind: FilterKind }
   | { type: 'setTheme'; theme: Theme }
+  | { type: 'setLanguage'; language: Language }
   | { type: 'setSplitMode'; splitMode: AppState['splitMode'] }
   | {
       type: 'setChunks';
@@ -62,8 +63,9 @@ const initialState: AppState = {
   filterKind: 'ALL',
   splitMode: 'AFTER',
   theme: 'dark',
+  language: 'ja',
   dirty: false,
-  statusMessage: 'Ready',
+  statusMessage: 'ready',
   lastAutosaveHash: '',
 };
 
@@ -82,6 +84,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, filterTitle: action.title, filterKind: action.kind };
     case 'setTheme':
       return { ...state, theme: action.theme };
+    case 'setLanguage':
+      return { ...state, language: action.language };
     case 'setSplitMode':
       return { ...state, splitMode: action.splitMode };
     case 'setStatus':
@@ -93,14 +97,14 @@ function reducer(state: AppState, action: Action): AppState {
     case 'undo': {
       const previous = state.history[state.history.length - 1];
       if (!previous) {
-        return { ...state, statusMessage: 'Undo history is empty.' };
+        return { ...state, statusMessage: 'undoEmpty' };
       }
       return {
         ...state,
         present: previous,
         history: state.history.slice(0, -1),
         dirty: true,
-        statusMessage: 'Undo applied.',
+        statusMessage: 'undoApplied',
       };
     }
     case 'setChunks': {
@@ -163,7 +167,7 @@ export function useAtknotApp() {
       return;
     }
 
-    if (!window.confirm('autosave から前回の作業状態を復元しますか？')) {
+    if (!window.confirm(state.language === 'ja' ? 'autosave から前回の作業状態を復元しますか？' : 'Restore the previous working state from autosave?')) {
       return;
     }
 
@@ -177,13 +181,13 @@ export function useAtknotApp() {
         anchorId: firstId,
         undoable: false,
         dirty: true,
-        message: 'Autosave restored.',
+        message: 'autosaveRestored',
       });
       dispatch({ type: 'setAutosaveHash', hash: hashContent(autosave) });
     } catch {
-      dispatch({ type: 'setStatus', message: 'Autosave could not be restored.' });
+      dispatch({ type: 'setStatus', message: 'autosaveRestoreFailed' });
     }
-  }, []);
+  }, [state.language]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -197,7 +201,7 @@ export function useAtknotApp() {
       }
       saveAutosave(serialized);
       dispatch({ type: 'setAutosaveHash', hash: nextHash });
-      dispatch({ type: 'setStatus', message: 'Autosaved to browser storage.' });
+      dispatch({ type: 'setStatus', message: 'autosaved' });
     }, 30000);
 
     return () => window.clearInterval(interval);
@@ -230,7 +234,7 @@ export function useAtknotApp() {
       chunks: result.chunks,
       selectedIds: [result.insertedId],
       anchorId: result.insertedId,
-      message: 'Chunk inserted.',
+      message: 'chunkInserted',
     });
   }
 
@@ -242,14 +246,14 @@ export function useAtknotApp() {
       chunks: next,
       selectedIds: selectedId ? [selectedId] : [],
       anchorId: selectedId,
-      message: 'Chunk deleted.',
+      message: 'chunkDeleted',
     });
   }
 
   function mergeSelected(ids = state.present.selectedIds) {
     const result = mergeChunks(state.present.chunks, ids);
     if (!result.mergedId || ids.length < 2) {
-      dispatch({ type: 'setStatus', message: 'Select at least two chunks to merge.' });
+      dispatch({ type: 'setStatus', message: 'selectTwoToMerge' });
       return;
     }
     dispatch({
@@ -257,7 +261,7 @@ export function useAtknotApp() {
       chunks: result.chunks,
       selectedIds: [result.mergedId],
       anchorId: result.mergedId,
-      message: 'Chunks merged.',
+      message: 'chunksMerged',
     });
   }
 
@@ -265,7 +269,7 @@ export function useAtknotApp() {
     dispatch({
       type: 'setChunks',
       chunks: renameChunks(state.present.chunks, ids, title),
-      message: 'Title updated.',
+      message: 'titleUpdated',
     });
   }
 
@@ -273,7 +277,7 @@ export function useAtknotApp() {
     dispatch({
       type: 'setChunks',
       chunks: updateChunk(state.present.chunks, id, (chunk) => normalizeChunk({ ...chunk, body })),
-      message: 'Body updated.',
+      message: 'bodyUpdated',
     });
   }
 
@@ -281,7 +285,7 @@ export function useAtknotApp() {
     dispatch({
       type: 'setChunks',
       chunks: updateChunk(state.present.chunks, id, (chunk) => ({ ...chunk, title })),
-      message: 'Title updated.',
+      message: 'titleUpdated',
     });
   }
 
@@ -289,7 +293,7 @@ export function useAtknotApp() {
     dispatch({
       type: 'setChunks',
       chunks: setChunkKind(state.present.chunks, ids, kind),
-      message: 'Chunk kind updated.',
+      message: 'kindUpdated',
     });
   }
 
@@ -297,7 +301,7 @@ export function useAtknotApp() {
     dispatch({
       type: 'setChunks',
       chunks: reorderChunks(state.present.chunks, activeId, targetId),
-      message: 'Chunk reordered.',
+      message: 'chunkReordered',
     });
   }
 
@@ -308,7 +312,7 @@ export function useAtknotApp() {
     dispatch({
       type: 'setChunks',
       chunks: updateChunk(state.present.chunks, selectedChunk.id, (chunk) => toggleSplitLine(chunk, line)),
-      message: 'Split line updated.',
+      message: 'splitLineUpdated',
     });
   }
 
@@ -319,7 +323,7 @@ export function useAtknotApp() {
     dispatch({
       type: 'setChunks',
       chunks: updateChunk(state.present.chunks, selectedChunk.id, clearSplitLines),
-      message: 'Split lines cleared.',
+      message: 'splitLinesCleared',
     });
   }
 
@@ -333,7 +337,7 @@ export function useAtknotApp() {
       chunks: result.chunks,
       selectedIds: result.selectedIds,
       anchorId: result.selectedIds[0] ?? null,
-      message: result.selectedIds.length > 1 ? 'Chunk split.' : 'No split was applied.',
+      message: result.selectedIds.length > 1 ? 'chunkSplit' : 'noSplitApplied',
     });
   }
 
@@ -347,7 +351,7 @@ export function useAtknotApp() {
       anchorId: firstId,
       undoable: false,
       dirty: false,
-      message: 'Project loaded.',
+      message: 'projectLoaded',
     });
     dispatch({ type: 'setAutosaveHash', hash: hashContent(serializeProject(parsed.chunks)) });
   }
@@ -373,8 +377,9 @@ export function useAtknotApp() {
     setFilterTitle: (title: string) => dispatch({ type: 'setFilters', title, kind: state.filterKind }),
     setFilterKind: (kind: FilterKind) => dispatch({ type: 'setFilters', title: state.filterTitle, kind }),
     setTheme: (theme: Theme) => dispatch({ type: 'setTheme', theme }),
+    setLanguage: (language: Language) => dispatch({ type: 'setLanguage', language }),
     setSplitMode: (splitMode: AppState['splitMode']) => dispatch({ type: 'setSplitMode', splitMode }),
     undo: () => dispatch({ type: 'undo' }),
-    markSaved: () => dispatch({ type: 'setDirty', dirty: false, message: 'Project exported.' }),
+    markSaved: () => dispatch({ type: 'setDirty', dirty: false, message: 'projectExported' }),
   };
 }

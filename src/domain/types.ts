@@ -17,6 +17,8 @@ export type FilterKind = 'ALL' | ChunkKind;
 
 export type Theme = 'light' | 'dark';
 
+export type Language = 'ja' | 'en';
+
 export type SplitMode = 'BEFORE' | 'AFTER';
 
 export type PresentState = {
@@ -32,6 +34,7 @@ export type AppState = {
   filterKind: FilterKind;
   splitMode: SplitMode;
   theme: Theme;
+  language: Language;
   dirty: boolean;
   statusMessage: string;
   lastAutosaveHash: string;
