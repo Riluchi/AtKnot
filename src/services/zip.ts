@@ -3,6 +3,14 @@ type ZipEntry = {
   data: Uint8Array;
 };
 
+type CentralDirectoryEntry = {
+  name: string;
+  compressionMethod: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  localHeaderOffset: number;
+};
+
 function toArrayBufferView(data: Uint8Array): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(data);
 }
@@ -51,37 +59,83 @@ async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-export async function readZipEntries(file: File): Promise<Map<string, Uint8Array>> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const entries = new Map<string, Uint8Array>();
-  const decoder = new TextDecoder('utf-8');
-  let offset = 0;
-
-  while (offset + 30 <= bytes.length) {
+function findEndOfCentralDirectory(bytes: Uint8Array): number {
+  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65557); offset -= 1) {
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset);
-    if (view.getUint32(0, true) !== 0x04034b50) {
+    if (view.getUint32(0, true) === 0x06054b50) {
+      return offset;
+    }
+  }
+  throw new Error('ZIP end of central directory not found.');
+}
+
+function parseCentralDirectory(bytes: Uint8Array): CentralDirectoryEntry[] {
+  const eocdOffset = findEndOfCentralDirectory(bytes);
+  const eocdView = new DataView(bytes.buffer, bytes.byteOffset + eocdOffset);
+  const centralDirectorySize = eocdView.getUint32(12, true);
+  const centralDirectoryOffset = eocdView.getUint32(16, true);
+  const decoder = new TextDecoder('utf-8');
+  const entries: CentralDirectoryEntry[] = [];
+  let offset = centralDirectoryOffset;
+  const limit = centralDirectoryOffset + centralDirectorySize;
+
+  while (offset + 46 <= limit) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset + offset);
+    if (view.getUint32(0, true) !== 0x02014b50) {
       break;
     }
 
-    const compressionMethod = view.getUint16(8, true);
-    const compressedSize = view.getUint32(18, true);
-    const fileNameLength = view.getUint16(26, true);
-    const extraLength = view.getUint16(28, true);
-
-    const nameStart = offset + 30;
-    const dataStart = nameStart + fileNameLength + extraLength;
+    const compressionMethod = view.getUint16(10, true);
+    const compressedSize = view.getUint32(20, true);
+    const uncompressedSize = view.getUint32(24, true);
+    const fileNameLength = view.getUint16(28, true);
+    const extraLength = view.getUint16(30, true);
+    const commentLength = view.getUint16(32, true);
+    const localHeaderOffset = view.getUint32(42, true);
+    const nameStart = offset + 46;
     const name = decoder.decode(bytes.slice(nameStart, nameStart + fileNameLength));
-    const compressed = bytes.slice(dataStart, dataStart + compressedSize);
 
-    if (compressionMethod === 0) {
-      entries.set(name, compressed);
-    } else if (compressionMethod === 8) {
-      entries.set(name, await inflateRaw(compressed));
-    } else {
-      throw new Error(`Unsupported zip compression method: ${compressionMethod}`);
+    entries.push({
+      name,
+      compressionMethod,
+      compressedSize,
+      uncompressedSize,
+      localHeaderOffset,
+    });
+
+    offset = nameStart + fileNameLength + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+function getEntryBytes(bytes: Uint8Array, entry: CentralDirectoryEntry): Uint8Array {
+  const localHeader = new DataView(bytes.buffer, bytes.byteOffset + entry.localHeaderOffset);
+  if (localHeader.getUint32(0, true) !== 0x04034b50) {
+    throw new Error(`Local file header not found for ${entry.name}.`);
+  }
+  const fileNameLength = localHeader.getUint16(26, true);
+  const extraLength = localHeader.getUint16(28, true);
+  const dataStart = entry.localHeaderOffset + 30 + fileNameLength + extraLength;
+  return bytes.slice(dataStart, dataStart + entry.compressedSize);
+}
+
+export async function readZipEntries(file: File): Promise<Map<string, Uint8Array>> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const entries = new Map<string, Uint8Array>();
+  const centralEntries = parseCentralDirectory(bytes);
+
+  for (const entry of centralEntries) {
+    const compressed = getEntryBytes(bytes, entry);
+    if (entry.compressionMethod === 0) {
+      entries.set(entry.name, compressed);
+      continue;
     }
-
-    offset = dataStart + compressedSize;
+    if (entry.compressionMethod === 8) {
+      entries.set(entry.name, await inflateRaw(compressed));
+      continue;
+    }
+    throw new Error(`Unsupported zip compression method: ${entry.compressionMethod}`);
   }
 
   return entries;

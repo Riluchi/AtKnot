@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent, MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { ChangeEvent, CSSProperties, MouseEvent, ReactNode } from 'react';
 import './App.css';
 import { createCocoforiaData } from './domain/cocoforia';
 import type { ChunkKind, Language, Theme } from './domain/types';
@@ -14,36 +14,147 @@ type ContextMenuState = {
   targetId: string;
 } | null;
 
-const kindIcons: Record<ChunkKind, string> = {
-  TEXT: 'T',
-  SCENE: '🎬',
+type IconButtonProps = {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+  disabled?: boolean;
 };
 
-const toolbarIcons = {
-  open: '📂',
-  save: '💾',
-  export: '🗜',
-  undo: '↶',
-  light: '☀',
-  dark: '☾',
-  language: '🌐',
-};
+function IconOpen() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 7.75A2.75 2.75 0 0 1 5.75 5h4.1l2 2h6.4A2.75 2.75 0 0 1 21 9.75v6.5A2.75 2.75 0 0 1 18.25 19H5.75A2.75 2.75 0 0 1 3 16.25z" />
+      <path d="M6.2 10.25h11.6" />
+    </svg>
+  );
+}
 
-function getLineBoundaryFromSelection(
+function IconSave() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 4.75h11.75L20 8v11.25A1.75 1.75 0 0 1 18.25 21H5.75A1.75 1.75 0 0 1 4 19.25V6.5A1.75 1.75 0 0 1 5.75 4.75z" />
+      <path d="M8 4.75v5.5h7.5v-4" />
+      <path d="M8 16h8" />
+    </svg>
+  );
+}
+
+function IconExport() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="5" width="16" height="14" rx="2.5" />
+      <path d="M12 8.25v7.5" />
+      <path d="m8.75 11.5 3.25-3.25 3.25 3.25" />
+      <path d="M8 18.5h8" />
+    </svg>
+  );
+}
+
+function IconUndo() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9.5 7H5v4.5" />
+      <path d="M5.25 11a7 7 0 1 1 2.1 5" />
+    </svg>
+  );
+}
+
+function IconTheme(theme: Theme) {
+  return theme === 'dark' ? (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M14.8 3.2a8.8 8.8 0 1 0 6 12.7A9.8 9.8 0 0 1 14.8 3.2Z" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.25" />
+      <path d="M12 2.75v2.5M12 18.75v2.5M21.25 12h-2.5M5.25 12h-2.5M18.54 5.46l-1.77 1.77M7.23 16.77l-1.77 1.77M18.54 18.54l-1.77-1.77M7.23 7.23 5.46 5.46" />
+    </svg>
+  );
+}
+
+function IconTextKind() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 6.5h14" />
+      <path d="M12 6.5v11" />
+      <path d="M8.5 17.5h7" />
+    </svg>
+  );
+}
+
+function IconSceneKind() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4.5" y="6" width="15" height="12" rx="2" />
+      <path d="m10 9 5 3-5 3z" />
+    </svg>
+  );
+}
+
+function IconAddSplit() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4v16" />
+      <path d="M11 12h9" />
+      <path d="M15.5 7.5v9" />
+    </svg>
+  );
+}
+
+function IconClearSplit() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4v16" />
+      <path d="m11 8 8 8" />
+      <path d="m19 8-8 8" />
+    </svg>
+  );
+}
+
+function IconCut() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="7.5" cy="8" r="2.25" />
+      <circle cx="7.5" cy="16" r="2.25" />
+      <path d="m10 9.5 9-5" />
+      <path d="m10 14.5 9 5" />
+    </svg>
+  );
+}
+
+function IconButton({ title, onClick, children, disabled = false }: IconButtonProps) {
+  return (
+    <button type="button" className="icon-button" title={title} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  );
+}
+
+function renderKindIcon(kind: ChunkKind) {
+  return kind === 'TEXT' ? <IconTextKind /> : <IconSceneKind />;
+}
+
+function getSplitBoundariesFromSelection(
   value: string,
   selectionStart: number,
   selectionEnd: number,
   splitMode: 'BEFORE' | 'AFTER',
-): number | null {
+): number[] {
   const text = value.replace(/\r\n?/g, '\n');
   const startLine = text.slice(0, selectionStart).split('\n').length;
   const endLine = text.slice(0, selectionEnd).split('\n').length;
-  const boundary = splitMode === 'BEFORE' ? startLine : endLine;
   const lineCount = text.split('\n').length;
-  if (boundary < 1 || boundary >= lineCount) {
-    return null;
+  const boundaries: number[] = [];
+
+  for (let line = startLine; line <= endLine; line += 1) {
+    const boundary = splitMode === 'BEFORE' ? line - 1 : line;
+    if (boundary >= 1 && boundary < lineCount) {
+      boundaries.push(boundary);
+    }
   }
-  return boundary;
+
+  return [...new Set(boundaries)].sort((a, b) => a - b);
 }
 
 function timestampLabel(date = new Date()): string {
@@ -55,6 +166,44 @@ function timestampLabel(date = new Date()): string {
 
 function getThemeTooltip(language: Language, theme: Theme): string {
   return theme === 'dark' ? t(language, 'themeDark') : t(language, 'themeLight');
+}
+
+function measureLineHeight(textarea: HTMLTextAreaElement): number {
+  const computed = window.getComputedStyle(textarea);
+  const parsed = Number.parseFloat(computed.lineHeight);
+  return Number.isFinite(parsed) ? parsed : 24;
+}
+
+function computeWrappedLineRows(text: string, textarea: HTMLTextAreaElement): number[] {
+  const computed = window.getComputedStyle(textarea);
+  const font = computed.font || `${computed.fontSize} ${computed.fontFamily}`;
+  const paddingLeft = Number.parseFloat(computed.paddingLeft) || 0;
+  const paddingRight = Number.parseFloat(computed.paddingRight) || 0;
+  const availableWidth = Math.max(textarea.clientWidth - paddingLeft - paddingRight, 1);
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) {
+    return text.split('\n').map(() => 1);
+  }
+  context.font = font;
+
+  return text.split('\n').map((line) => {
+    if (line.length === 0) {
+      return 1;
+    }
+    let rows = 1;
+    let width = 0;
+    for (const char of line) {
+      const advance = context.measureText(char).width;
+      if (width + advance > availableWidth) {
+        rows += 1;
+        width = advance;
+      } else {
+        width += advance;
+      }
+    }
+    return rows;
+  });
 }
 
 export default function App() {
@@ -72,6 +221,7 @@ export default function App() {
     updateKind,
     moveChunk,
     setSplitLine,
+    addSelectedSplitLines,
     clearSelectedSplitLines,
     splitSelectedChunk,
     importProject,
@@ -81,6 +231,7 @@ export default function App() {
     setTheme,
     setLanguage,
     setSplitMode,
+    setStatus,
     undo,
     markSaved,
   } = useAtknotApp();
@@ -92,8 +243,34 @@ export default function App() {
   const gutterRef = useRef<HTMLDivElement>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [lineHeights, setLineHeights] = useState<number[]>([24]);
 
   const lineCount = selectedChunk ? selectedChunk.body.split('\n').length : 1;
+
+  useLayoutEffect(() => {
+    if (!textareaRef.current || !selectedChunk) {
+      return;
+    }
+    const textarea = textareaRef.current;
+    const lineHeight = measureLineHeight(textarea);
+    const rows = computeWrappedLineRows(selectedChunk.body, textarea);
+    setLineHeights(rows.map((rowCount) => rowCount * lineHeight));
+  }, [selectedChunk]);
+
+  useEffect(() => {
+    function handleResize() {
+      if (!textareaRef.current || !selectedChunk) {
+        return;
+      }
+      const textarea = textareaRef.current;
+      const lineHeight = measureLineHeight(textarea);
+      const rows = computeWrappedLineRows(selectedChunk.body, textarea);
+      setLineHeights(rows.map((rowCount) => rowCount * lineHeight));
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [selectedChunk]);
 
   function localizedStatus(): string {
     return t(language, state.statusMessage);
@@ -166,27 +343,27 @@ export default function App() {
       }
 
       event.preventDefault();
-      const boundary = getLineBoundaryFromSelection(
+      const boundaries = getSplitBoundariesFromSelection(
         textareaRef.current.value,
         textareaRef.current.selectionStart,
         textareaRef.current.selectionEnd,
         state.splitMode,
       );
-      if (boundary !== null) {
-        setSplitLine(boundary);
+      if (boundaries.length > 0) {
+        addSelectedSplitLines(boundaries);
       }
     }
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
+    addSelectedSplitLines,
     language,
     markSaved,
     renameSelected,
     selectChunk,
     selectedChunk,
     serialize,
-    setSplitLine,
     state.splitMode,
     undo,
     visibleChunks,
@@ -216,16 +393,18 @@ export default function App() {
 
     try {
       const entries = await readZipEntries(file);
-      const tokenEntry = [...entries.entries()].find(([name]) => name.endsWith('.token'));
+      const tokenEntries = [...entries.entries()].filter(([name]) => name.endsWith('.token'));
       const templateEntry = entries.get('__data.json');
       const templateJson = templateEntry ? JSON.parse(new TextDecoder('utf-8').decode(templateEntry)) : undefined;
       const generatedData = createCocoforiaData(state.present.chunks, templateJson);
       const encoder = new TextEncoder();
-      const zipBlob = createZip([
-        ...(tokenEntry ? [{ name: tokenEntry[0], data: tokenEntry[1] }] : []),
+      const zipEntries = [
+        ...tokenEntries.map(([name, data]) => ({ name, data })),
         { name: '__data.json', data: encoder.encode(JSON.stringify(generatedData, null, 2)) },
-      ]);
+      ];
+      const zipBlob = createZip(zipEntries);
       downloadBlob(zipBlob, `importableRoom_${timestampLabel()}.zip`);
+      setStatus('exportCompleted');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown export error';
       window.alert(`${t(language, 'exportFailed')}: ${message}`);
@@ -238,17 +417,17 @@ export default function App() {
     if (!textareaRef.current || !selectedChunk) {
       return;
     }
-    const boundary = getLineBoundaryFromSelection(
+    const boundaries = getSplitBoundariesFromSelection(
       textareaRef.current.value,
       textareaRef.current.selectionStart,
       textareaRef.current.selectionEnd,
       state.splitMode,
     );
-    if (boundary === null) {
+    if (boundaries.length === 0) {
       window.alert(t(language, 'noSplitAfterLastLine'));
       return;
     }
-    setSplitLine(boundary);
+    addSelectedSplitLines(boundaries);
   }
 
   function handleLineMarkerClick(line: number, event: MouseEvent<HTMLButtonElement>) {
@@ -271,7 +450,7 @@ export default function App() {
           <p>{t(language, 'appTagline')}</p>
         </div>
         <div className="toolbar">
-          <div className="language-toggle" aria-label={toolbarIcons.language}>
+          <div className="language-toggle">
             <button type="button" className={language === 'ja' ? 'is-active' : ''} onClick={() => setLanguage('ja')}>
               {t(language, 'languageJa')}
             </button>
@@ -279,29 +458,27 @@ export default function App() {
               {t(language, 'languageEn')}
             </button>
           </div>
-          <button type="button" className="icon-button" title={t(language, 'openJson')} onClick={() => fileInputRef.current?.click()}>
-            {toolbarIcons.open}
-          </button>
-          <button
-            type="button"
-            className="icon-button"
+          <IconButton title={t(language, 'openJson')} onClick={() => fileInputRef.current?.click()}>
+            <IconOpen />
+          </IconButton>
+          <IconButton
             title={t(language, 'saveJson')}
             onClick={() => {
               downloadText(serialize(), 'project.atknot.json');
               markSaved();
             }}
           >
-            {toolbarIcons.save}
-          </button>
-          <button type="button" className="icon-button" title={t(language, 'exportRoomZip')} onClick={() => roomZipInputRef.current?.click()}>
-            {toolbarIcons.export}
-          </button>
-          <button type="button" className="icon-button" title={t(language, 'undo')} onClick={undo}>
-            {toolbarIcons.undo}
-          </button>
-          <button type="button" className="icon-button" title={getThemeTooltip(language, state.theme)} onClick={toggleTheme}>
-            {state.theme === 'dark' ? toolbarIcons.dark : toolbarIcons.light}
-          </button>
+            <IconSave />
+          </IconButton>
+          <IconButton title={t(language, 'exportRoomZip')} onClick={() => roomZipInputRef.current?.click()}>
+            <IconExport />
+          </IconButton>
+          <IconButton title={t(language, 'undo')} onClick={undo}>
+            <IconUndo />
+          </IconButton>
+          <IconButton title={getThemeTooltip(language, state.theme)} onClick={toggleTheme}>
+            {IconTheme(state.theme)}
+          </IconButton>
           <input ref={fileInputRef} type="file" accept=".json,.atknot.json" hidden onChange={handleImportProject} />
           <input ref={roomZipInputRef} type="file" accept=".zip" hidden onChange={handleExportRoom} />
         </div>
@@ -391,7 +568,7 @@ export default function App() {
                     {dragDisabled ? '•' : '⋮⋮'}
                   </span>
                   <span className={`kind-icon kind-${chunk.kind.toLowerCase()}`} title={t(language, chunk.kind === 'TEXT' ? 'text' : 'scene')}>
-                    {kindIcons[chunk.kind]}
+                    {renderKindIcon(chunk.kind)}
                   </span>
                   <span className="chunk-title">{chunk.title}</span>
                 </button>
@@ -420,7 +597,7 @@ export default function App() {
                         title={t(language, kind === 'TEXT' ? 'text' : 'scene')}
                         onClick={() => updateKind(kind)}
                       >
-                        {kindIcons[kind]}
+                        {renderKindIcon(kind)}
                       </button>
                     ))}
                   </div>
@@ -435,11 +612,13 @@ export default function App() {
                       const line = index + 1;
                       const isMarker = selectedChunk.splitLines.includes(line);
                       const isToggleEnabled = line < lineCount;
+                      const style = { height: `${lineHeights[index] ?? 24}px` } as CSSProperties;
                       return (
                         <button
                           key={line}
                           type="button"
                           className={`gutter-line${isMarker ? ' has-marker' : ''}`}
+                          style={style}
                           title={isToggleEnabled ? `${t(language, 'splitChunk')} ${line}` : ''}
                           onClick={(event) => isToggleEnabled && handleLineMarkerClick(line, event)}
                           disabled={!isToggleEnabled}
@@ -456,7 +635,7 @@ export default function App() {
                     onChange={(event) => updateBody(selectedChunk.id, event.target.value)}
                     onScroll={handleEditorScroll}
                     spellCheck={false}
-                    wrap="off"
+                    wrap="soft"
                   />
                 </div>
               </div>
@@ -469,14 +648,17 @@ export default function App() {
                     <option value="AFTER">{t(language, 'splitAfter')}</option>
                   </select>
                 </label>
-                <button type="button" onClick={triggerSplitFromTextarea}>
-                  {t(language, 'addSplitFromSelection')}
+                <button type="button" className="action-button" onClick={triggerSplitFromTextarea}>
+                  <IconAddSplit />
+                  <span>{t(language, 'selectedLinesSplit')}</span>
                 </button>
-                <button type="button" onClick={clearSelectedSplitLines}>
-                  {t(language, 'clearSplitLines')}
+                <button type="button" className="action-button" onClick={clearSelectedSplitLines}>
+                  <IconClearSplit />
+                  <span>{t(language, 'clearSplitLines')}</span>
                 </button>
-                <button type="button" onClick={splitSelectedChunk}>
-                  {t(language, 'splitChunk')}
+                <button type="button" className="action-button" onClick={splitSelectedChunk}>
+                  <IconCut />
+                  <span>{t(language, 'splitChunk')}</span>
                 </button>
               </div>
             </div>
@@ -500,10 +682,10 @@ export default function App() {
                 <kbd>Arrow Up/Down</kbd> {t(language, 'moveSelection')}
               </li>
               <li>
-                <kbd>Ctrl/Cmd + Shift + L</kbd> {t(language, 'addSplitFromSelection')}
+                <kbd>Ctrl/Cmd + Shift + L</kbd> {t(language, 'selectedLinesSplit')}
               </li>
               <li>
-                <kbd>Alt + Enter</kbd> {t(language, 'addSplitFromSelection')}
+                <kbd>Alt + Enter</kbd> {t(language, 'selectedLinesSplit')}
               </li>
             </ul>
             <p className="status-line">{localizedStatus()}</p>

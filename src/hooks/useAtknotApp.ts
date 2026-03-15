@@ -6,6 +6,7 @@ import {
   getSelectionRangeIds,
   getVisibleChunks,
   insertChunkAfter,
+  addSplitLines,
   mergeChunks,
   renameChunks,
   reorderChunks,
@@ -167,7 +168,7 @@ export function useAtknotApp() {
       return;
     }
 
-    if (!window.confirm(state.language === 'ja' ? 'autosave から前回の作業状態を復元しますか？' : 'Restore the previous working state from autosave?')) {
+    if (!window.confirm('autosave から前回の作業状態を復元しますか？')) {
       return;
     }
 
@@ -187,7 +188,7 @@ export function useAtknotApp() {
     } catch {
       dispatch({ type: 'setStatus', message: 'autosaveRestoreFailed' });
     }
-  }, [state.language]);
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -316,6 +317,17 @@ export function useAtknotApp() {
     });
   }
 
+  function addSelectedSplitLines(lines: number[]) {
+    if (!selectedChunk || lines.length === 0) {
+      return;
+    }
+    dispatch({
+      type: 'setChunks',
+      chunks: updateChunk(state.present.chunks, selectedChunk.id, (chunk) => addSplitLines(chunk, lines)),
+      message: 'splitLineUpdated',
+    });
+  }
+
   function clearSelectedSplitLines() {
     if (!selectedChunk) {
       return;
@@ -370,6 +382,7 @@ export function useAtknotApp() {
     updateKind,
     moveChunk,
     setSplitLine,
+    addSelectedSplitLines,
     clearSelectedSplitLines,
     splitSelectedChunk,
     importProject,
@@ -379,6 +392,7 @@ export function useAtknotApp() {
     setTheme: (theme: Theme) => dispatch({ type: 'setTheme', theme }),
     setLanguage: (language: Language) => dispatch({ type: 'setLanguage', language }),
     setSplitMode: (splitMode: AppState['splitMode']) => dispatch({ type: 'setSplitMode', splitMode }),
+    setStatus: (message: string) => dispatch({ type: 'setStatus', message }),
     undo: () => dispatch({ type: 'undo' }),
     markSaved: () => dispatch({ type: 'setDirty', dirty: false, message: 'projectExported' }),
   };

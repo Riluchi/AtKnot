@@ -149,6 +149,13 @@ export function toggleSplitLine(chunk: Chunk, line: number): Chunk {
   };
 }
 
+export function addSplitLines(chunk: Chunk, lines: number[]): Chunk {
+  return {
+    ...chunk,
+    splitLines: sanitizeSplitLines([...chunk.splitLines, ...lines], chunk.body),
+  };
+}
+
 export function clearSplitLines(chunk: Chunk): Chunk {
   return { ...chunk, splitLines: [] };
 }

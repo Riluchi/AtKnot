@@ -63,6 +63,19 @@
   min-width: 2.9rem;
 }
 
+.icon-button svg,
+.kind-icon svg,
+.kind-toggle svg,
+.action-button svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .language-toggle button {
   border: 0;
   background: transparent;
@@ -80,6 +93,8 @@
 .icon-button {
   font-size: 1.05rem;
   padding-inline: 0.75rem;
+  display: inline-grid;
+  place-items: center;
 }
 
 .workspace {
@@ -236,6 +251,8 @@ button:disabled {
 .kind-toggle button {
   font-size: 1rem;
   padding-inline: 0.9rem;
+  display: inline-grid;
+  place-items: center;
 }
 
 .editor-frame {
@@ -308,8 +325,16 @@ button:disabled {
   border-radius: 0;
   font-family: var(--mono);
   line-height: 1.55;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
   overflow: auto;
+}
+
+.action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 14px;
 }
 
 .help-card h2 {
