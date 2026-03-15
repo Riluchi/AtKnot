@@ -6,7 +6,7 @@ import type { ChunkKind, Language, Theme } from './domain/types';
 import { useAtknotApp } from './hooks/useAtknotApp';
 import { t } from './i18n';
 import { downloadBlob, downloadText } from './services/download';
-import { createZip, readZipEntries } from './services/zip';
+import { createZip, inspectZipEntries } from './services/zip';
 
 type ContextMenuState = {
   x: number;
@@ -409,21 +409,35 @@ export default function App() {
 
     try {
       pushDebugLog(`Selected zip: ${file.name} (${file.size} bytes)`);
-      const entries = await readZipEntries(file);
+      const entries = await inspectZipEntries(file);
       pushDebugLog(`ZIP entries: ${[...entries.keys()].join(', ')}`);
-      const tokenEntries = [...entries.entries()].filter(([name]) => name.endsWith('.token'));
+      const tokenEntries = [...entries.values()].filter((entry) => entry.name.endsWith('.token'));
       if (tokenEntries.length === 0) {
         throw new Error(t(language, 'noTokenFound'));
       }
-      const templateEntry = entries.get('__data.json');
-      const templateJson = templateEntry ? JSON.parse(new TextDecoder('utf-8').decode(templateEntry)) : undefined;
-      const generatedData = createCocoforiaData(state.present.chunks, templateJson);
+      const generatedData = createCocoforiaData(state.present.chunks);
       const encoder = new TextEncoder();
       const zipEntries = [
-        ...tokenEntries.map(([name, data]) => ({ name, data })),
-        { name: '__data.json', data: encoder.encode(JSON.stringify(generatedData, null, 2)) },
+        ...tokenEntries.map((entry) => ({
+          mode: 'raw' as const,
+          name: entry.name,
+          compressionMethod: entry.compressionMethod,
+          compressedData: entry.compressedData,
+          compressedSize: entry.compressedSize,
+          uncompressedSize: entry.uncompressedSize,
+          crc32: entry.crc32,
+        })),
+        {
+          mode: 'store' as const,
+          name: '__data.json',
+          data: encoder.encode(JSON.stringify(generatedData, null, 2)),
+        },
       ];
-      pushDebugLog(`Generated export entries: ${zipEntries.map((entry) => `${entry.name}(${entry.data.length})`).join(', ')}`);
+      pushDebugLog(
+        `Generated export entries: ${zipEntries
+          .map((entry) => `${entry.name}(${entry.mode === 'raw' ? entry.compressedSize : entry.data.length})`)
+          .join(', ')}`,
+      );
       const zipBlob = createZip(zipEntries);
       const filename = `importableRoom_${timestampLabel()}.zip`;
       const url = URL.createObjectURL(zipBlob);

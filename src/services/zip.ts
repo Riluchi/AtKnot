@@ -1,11 +1,32 @@
-type ZipEntry = {
+type ExistingZipEntry = {
   name: string;
-  data: Uint8Array;
+  compressionMethod: number;
+  compressedData: Uint8Array;
+  compressedSize: number;
+  uncompressedSize: number;
+  crc32: number;
 };
+
+type ZipEntry =
+  | {
+      mode: 'raw';
+      name: string;
+      compressionMethod: number;
+      compressedData: Uint8Array;
+      compressedSize: number;
+      uncompressedSize: number;
+      crc32: number;
+    }
+  | {
+      mode: 'store';
+      name: string;
+      data: Uint8Array;
+    };
 
 type CentralDirectoryEntry = {
   name: string;
   compressionMethod: number;
+  crc32: number;
   compressedSize: number;
   uncompressedSize: number;
   localHeaderOffset: number;
@@ -50,15 +71,6 @@ function writeUint32(view: DataView, offset: number, value: number): void {
   view.setUint32(offset, value >>> 0, true);
 }
 
-async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new DecompressionStream('deflate-raw');
-  const writer = stream.writable.getWriter();
-  await writer.write(toArrayBufferView(data));
-  await writer.close();
-  const response = new Response(stream.readable);
-  return new Uint8Array(await response.arrayBuffer());
-}
-
 function findEndOfCentralDirectory(bytes: Uint8Array): number {
   for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65557); offset -= 1) {
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset);
@@ -86,6 +98,7 @@ function parseCentralDirectory(bytes: Uint8Array): CentralDirectoryEntry[] {
     }
 
     const compressionMethod = view.getUint16(10, true);
+    const crc = view.getUint32(16, true);
     const compressedSize = view.getUint32(20, true);
     const uncompressedSize = view.getUint32(24, true);
     const fileNameLength = view.getUint16(28, true);
@@ -98,6 +111,7 @@ function parseCentralDirectory(bytes: Uint8Array): CentralDirectoryEntry[] {
     entries.push({
       name,
       compressionMethod,
+      crc32: crc,
       compressedSize,
       uncompressedSize,
       localHeaderOffset,
@@ -109,7 +123,7 @@ function parseCentralDirectory(bytes: Uint8Array): CentralDirectoryEntry[] {
   return entries;
 }
 
-function getEntryBytes(bytes: Uint8Array, entry: CentralDirectoryEntry): Uint8Array {
+function getEntryCompressedBytes(bytes: Uint8Array, entry: CentralDirectoryEntry): Uint8Array {
   const localHeader = new DataView(bytes.buffer, bytes.byteOffset + entry.localHeaderOffset);
   if (localHeader.getUint32(0, true) !== 0x04034b50) {
     throw new Error(`Local file header not found for ${entry.name}.`);
@@ -120,22 +134,20 @@ function getEntryBytes(bytes: Uint8Array, entry: CentralDirectoryEntry): Uint8Ar
   return bytes.slice(dataStart, dataStart + entry.compressedSize);
 }
 
-export async function readZipEntries(file: File): Promise<Map<string, Uint8Array>> {
+export async function inspectZipEntries(file: File): Promise<Map<string, ExistingZipEntry>> {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const entries = new Map<string, Uint8Array>();
+  const entries = new Map<string, ExistingZipEntry>();
   const centralEntries = parseCentralDirectory(bytes);
 
   for (const entry of centralEntries) {
-    const compressed = getEntryBytes(bytes, entry);
-    if (entry.compressionMethod === 0) {
-      entries.set(entry.name, compressed);
-      continue;
-    }
-    if (entry.compressionMethod === 8) {
-      entries.set(entry.name, await inflateRaw(compressed));
-      continue;
-    }
-    throw new Error(`Unsupported zip compression method: ${entry.compressionMethod}`);
+    entries.set(entry.name, {
+      name: entry.name,
+      compressionMethod: entry.compressionMethod,
+      compressedData: getEntryCompressedBytes(bytes, entry),
+      compressedSize: entry.compressedSize,
+      uncompressedSize: entry.uncompressedSize,
+      crc32: entry.crc32,
+    });
   }
 
   return entries;
@@ -149,19 +161,23 @@ export function createZip(entries: ZipEntry[]): Blob {
 
   for (const entry of entries) {
     const nameBytes = encoder.encode(entry.name);
-    const crc = crc32(entry.data);
+    const compressionMethod = entry.mode === 'raw' ? entry.compressionMethod : 0;
+    const compressedData = entry.mode === 'raw' ? entry.compressedData : entry.data;
+    const compressedSize = entry.mode === 'raw' ? entry.compressedSize : entry.data.length;
+    const uncompressedSize = entry.mode === 'raw' ? entry.uncompressedSize : entry.data.length;
+    const entryCrc32 = entry.mode === 'raw' ? entry.crc32 : crc32(entry.data);
 
     const localHeader = new Uint8Array(30 + nameBytes.length);
     const localView = new DataView(localHeader.buffer);
     writeUint32(localView, 0, 0x04034b50);
     writeUint16(localView, 4, 20);
     writeUint16(localView, 6, 0);
-    writeUint16(localView, 8, 0);
+    writeUint16(localView, 8, compressionMethod);
     writeUint16(localView, 10, 0);
     writeUint16(localView, 12, 0);
-    writeUint32(localView, 14, crc);
-    writeUint32(localView, 18, entry.data.length);
-    writeUint32(localView, 22, entry.data.length);
+    writeUint32(localView, 14, entryCrc32);
+    writeUint32(localView, 18, compressedSize);
+    writeUint32(localView, 22, uncompressedSize);
     writeUint16(localView, 26, nameBytes.length);
     writeUint16(localView, 28, 0);
     localHeader.set(nameBytes, 30);
@@ -172,12 +188,12 @@ export function createZip(entries: ZipEntry[]): Blob {
     writeUint16(centralView, 4, 20);
     writeUint16(centralView, 6, 20);
     writeUint16(centralView, 8, 0);
-    writeUint16(centralView, 10, 0);
+    writeUint16(centralView, 10, compressionMethod);
     writeUint16(centralView, 12, 0);
     writeUint16(centralView, 14, 0);
-    writeUint32(centralView, 16, crc);
-    writeUint32(centralView, 20, entry.data.length);
-    writeUint32(centralView, 24, entry.data.length);
+    writeUint32(centralView, 16, entryCrc32);
+    writeUint32(centralView, 20, compressedSize);
+    writeUint32(centralView, 24, uncompressedSize);
     writeUint16(centralView, 28, nameBytes.length);
     writeUint16(centralView, 30, 0);
     writeUint16(centralView, 32, 0);
@@ -187,9 +203,9 @@ export function createZip(entries: ZipEntry[]): Blob {
     writeUint32(centralView, 42, offset);
     centralHeader.set(nameBytes, 46);
 
-    fileParts.push(localHeader, entry.data);
+    fileParts.push(localHeader, compressedData);
     centralParts.push(centralHeader);
-    offset += localHeader.length + entry.data.length;
+    offset += localHeader.length + compressedData.length;
   }
 
   const centralDirectory = concatArrays(centralParts);
