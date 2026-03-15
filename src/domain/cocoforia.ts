@@ -36,7 +36,7 @@ function createScene(chunk: Chunk, order: number) {
     bgVisible: true,
     items: [],
     effects: [],
-    memo: chunk.body,
+    text: chunk.body,
     archived: false,
   };
 }
@@ -46,7 +46,7 @@ function createNote(chunk: Chunk, order: number, sceneId: string) {
     id: `note-${slug(chunk.title)}-${order}`,
     name: chunk.title,
     order,
-    memo: chunk.body,
+    text: chunk.body,
     sceneId,
     color: '#ffffff',
     textColor: '#1f2937',
@@ -106,7 +106,7 @@ export function createCocoforiaData(chunks: Chunk[], template?: unknown): unknow
       bgVisible: true,
       items: [],
       effects: [],
-      memo: '',
+      text: '',
       archived: false,
     } as const);
 

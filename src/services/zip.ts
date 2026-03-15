@@ -71,6 +71,19 @@ function writeUint32(view: DataView, offset: number, value: number): void {
   view.setUint32(offset, value >>> 0, true);
 }
 
+async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('This browser does not support ZIP deflate decompression.');
+  }
+
+  const stream = new DecompressionStream('deflate-raw');
+  const writer = stream.writable.getWriter();
+  await writer.write(toArrayBufferView(data));
+  await writer.close();
+  const response = new Response(stream.readable);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 function findEndOfCentralDirectory(bytes: Uint8Array): number {
   for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65557); offset -= 1) {
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset);
@@ -151,6 +164,22 @@ export async function inspectZipEntries(file: File): Promise<Map<string, Existin
   }
 
   return entries;
+}
+
+export async function readZipTextEntry(entry: ExistingZipEntry): Promise<string> {
+  const bytes =
+    entry.compressionMethod === 0
+      ? entry.compressedData
+      : entry.compressionMethod === 8
+        ? await Promise.race([
+            inflateRaw(entry.compressedData),
+            new Promise<Uint8Array>((_, reject) =>
+              window.setTimeout(() => reject(new Error(`Timed out while inflating ${entry.name}.`)), 4000),
+            ),
+          ])
+        : await Promise.reject(new Error(`Unsupported zip compression method: ${entry.compressionMethod}`));
+
+  return new TextDecoder('utf-8').decode(bytes);
 }
 
 export function createZip(entries: ZipEntry[]): Blob {

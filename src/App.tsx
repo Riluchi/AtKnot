@@ -6,7 +6,7 @@ import type { ChunkKind, Language, Theme } from './domain/types';
 import { useAtknotApp } from './hooks/useAtknotApp';
 import { t } from './i18n';
 import { downloadBlob, downloadText } from './services/download';
-import { createZip, inspectZipEntries } from './services/zip';
+import { createZip, inspectZipEntries, readZipTextEntry } from './services/zip';
 
 type ContextMenuState = {
   x: number;
@@ -415,7 +415,22 @@ export default function App() {
       if (tokenEntries.length === 0) {
         throw new Error(t(language, 'noTokenFound'));
       }
-      const generatedData = createCocoforiaData(state.present.chunks);
+      const templateEntry = entries.get('__data.json');
+      let templateJson: unknown | undefined;
+      if (templateEntry) {
+        try {
+          const templateText = await readZipTextEntry(templateEntry);
+          templateJson = JSON.parse(templateText);
+          pushDebugLog(`Loaded template __data.json (${templateText.length} chars)`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'unknown template read error';
+          pushDebugLog(`Template read failed, fallback to generated base: ${message}`);
+        }
+      } else {
+        pushDebugLog('Template __data.json not found, fallback to generated base.');
+      }
+
+      const generatedData = createCocoforiaData(state.present.chunks, templateJson);
       const encoder = new TextEncoder();
       const zipEntries = [
         ...tokenEntries.map((entry) => ({
