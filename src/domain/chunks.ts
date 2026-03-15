@@ -46,7 +46,18 @@ export function insertChunkAfter(chunks: Chunk[], afterId: string | null): { chu
 
 export function renameChunks(chunks: Chunk[], ids: string[], nextTitle: string): Chunk[] {
   const title = nextTitle.trim() || 'Untitled';
-  return chunks.map((chunk) => (ids.includes(chunk.id) ? { ...chunk, title } : chunk));
+  if (ids.length <= 1) {
+    return chunks.map((chunk) => (ids.includes(chunk.id) ? { ...chunk, title } : chunk));
+  }
+
+  let sequence = 0;
+  return chunks.map((chunk) => {
+    if (!ids.includes(chunk.id)) {
+      return chunk;
+    }
+    sequence += 1;
+    return { ...chunk, title: `${title} (${sequence})` };
+  });
 }
 
 export function deleteChunks(chunks: Chunk[], ids: string[]): Chunk[] {
