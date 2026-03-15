@@ -244,6 +244,8 @@ export default function App() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [lineHeights, setLineHeights] = useState<number[]>([24]);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [exportDownload, setExportDownload] = useState<{ url: string; filename: string } | null>(null);
 
   const lineCount = selectedChunk ? selectedChunk.body.split('\n').length : 1;
 
@@ -276,6 +278,12 @@ export default function App() {
     return t(language, state.statusMessage);
   }
 
+  function pushDebugLog(message: string) {
+    const stamped = `${new Date().toISOString()} ${message}`;
+    console.debug('[AtKnot export]', stamped);
+    setDebugLogs((prev) => [stamped, ...prev].slice(0, 20));
+  }
+
   function promptRename(defaultTitle: string): string | null {
     return window.prompt(t(language, 'renamePrompt'), defaultTitle);
   }
@@ -291,6 +299,14 @@ export default function App() {
     window.addEventListener('click', onWindowClick);
     return () => window.removeEventListener('click', onWindowClick);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (exportDownload) {
+        URL.revokeObjectURL(exportDownload.url);
+      }
+    };
+  }, [exportDownload]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -392,8 +408,13 @@ export default function App() {
     }
 
     try {
+      pushDebugLog(`Selected zip: ${file.name} (${file.size} bytes)`);
       const entries = await readZipEntries(file);
+      pushDebugLog(`ZIP entries: ${[...entries.keys()].join(', ')}`);
       const tokenEntries = [...entries.entries()].filter(([name]) => name.endsWith('.token'));
+      if (tokenEntries.length === 0) {
+        throw new Error(t(language, 'noTokenFound'));
+      }
       const templateEntry = entries.get('__data.json');
       const templateJson = templateEntry ? JSON.parse(new TextDecoder('utf-8').decode(templateEntry)) : undefined;
       const generatedData = createCocoforiaData(state.present.chunks, templateJson);
@@ -402,11 +423,22 @@ export default function App() {
         ...tokenEntries.map(([name, data]) => ({ name, data })),
         { name: '__data.json', data: encoder.encode(JSON.stringify(generatedData, null, 2)) },
       ];
+      pushDebugLog(`Generated export entries: ${zipEntries.map((entry) => `${entry.name}(${entry.data.length})`).join(', ')}`);
       const zipBlob = createZip(zipEntries);
-      downloadBlob(zipBlob, `importableRoom_${timestampLabel()}.zip`);
-      setStatus('exportCompleted');
+      const filename = `importableRoom_${timestampLabel()}.zip`;
+      const url = URL.createObjectURL(zipBlob);
+      setExportDownload((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev.url);
+        }
+        return { url, filename };
+      });
+      downloadBlob(zipBlob, filename);
+      setStatus('exportReady');
+      pushDebugLog(`Created ZIP blob: ${zipBlob.size} bytes as ${filename}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown export error';
+      pushDebugLog(`Export error: ${message}`);
       window.alert(`${t(language, 'exportFailed')}: ${message}`);
     } finally {
       event.target.value = '';
@@ -689,6 +721,23 @@ export default function App() {
               </li>
             </ul>
             <p className="status-line">{localizedStatus()}</p>
+            {exportDownload ? (
+              <p className="download-row">
+                <a href={exportDownload.url} download={exportDownload.filename}>
+                  {t(language, 'downloadExport')}
+                </a>
+              </p>
+            ) : null}
+            <div className="debug-log">
+              <h3>{t(language, 'debugLog')}</h3>
+              {debugLogs.length === 0 ? null : (
+                <ul>
+                  {debugLogs.map((log) => (
+                    <li key={log}>{log}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </main>
       </section>

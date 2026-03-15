@@ -361,6 +361,39 @@ kbd {
   margin-top: 1rem;
 }
 
+.download-row {
+  margin-top: 0.75rem;
+}
+
+.download-row a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.debug-log {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.debug-log h3 {
+  margin: 0 0 0.55rem;
+  font-size: 0.9rem;
+}
+
+.debug-log ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.3rem;
+  max-height: 10rem;
+  overflow: auto;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
 .empty-state {
   padding: 1rem;
   text-align: center;
