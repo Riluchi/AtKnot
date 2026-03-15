@@ -27,7 +27,7 @@ const dictionaries: Record<Language, Dictionary> = {
     splitAfter: '後で分割',
     addSplitFromSelection: '選択位置から分割線を追加',
     clearSplitLines: '分割線をクリア',
-    splitChunk: 'Chunk を分割',
+    splitChunk: '要素を分割',
     selectedLinesSplit: '選択行にまとめて分割線を追加',
     shortcuts: 'ショートカット',
     moveSelection: 'リスト選択を移動',
