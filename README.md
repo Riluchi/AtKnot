@@ -11,12 +11,13 @@ AtKnot は、Cocoforia 向けの部屋データを作るための Web ベース 
 
 ## 使い方
 
-- Windows以外のOSで利用する場合
+- Web版を利用する場合(Windows以外のOS)
   1. [https://riluchi.github.io/AtKnot/](https://riluchi.github.io/AtKnot/) にアクセスして、ご利用下さい。
-  2. 詳しい利用方法は現在整備中です。
+  2. [次のリンク](./docs/how-to-web.md)に詳細を記載しています
 - WindowsOSの場合
   1. [https://github.com/Riluchi/AtKnot/releases/](https://github.com/Riluchi/AtKnot/releases/) にアクセスし、`Latest`と表記されたバージョンの`atknot.exe`をDLください
-  2. 実行時、警告が出ると思いますが、後日改善予定です。
+  2. 実行時、警告が出ると思いますが、後日改善予定です
+  3. [次のリンク](./docs/how-to-desktop.md)に詳細を記載しています
 
 ## 概要
 
