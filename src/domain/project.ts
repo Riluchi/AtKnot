@@ -9,6 +9,8 @@ const chunkSchema = z.object({
   body: z.string(),
   kind: chunkKindSchema,
   splitLines: z.array(z.number().int()),
+  fieldWidth: z.number().int().positive().optional(),
+  fieldHeight: z.number().int().positive().optional(),
 });
 
 const persistedSchema = z.object({

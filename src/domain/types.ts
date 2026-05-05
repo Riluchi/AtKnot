@@ -6,6 +6,8 @@ export type Chunk = {
   body: string;
   kind: ChunkKind;
   splitLines: number[];
+  fieldWidth?: number;
+  fieldHeight?: number;
 };
 
 export type PersistedStateV1 = {

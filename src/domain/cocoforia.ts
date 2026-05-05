@@ -32,6 +32,8 @@ function createScene(chunk: Chunk, order: number) {
     id: `scene-${slug(chunk.title)}-${order}`,
     name: chunk.title,
     order,
+    ...(chunk.fieldWidth !== undefined ? { fieldWidth: chunk.fieldWidth } : {}),
+    ...(chunk.fieldHeight !== undefined ? { fieldHeight: chunk.fieldHeight } : {}),
     bgUrl: null,
     bgVisible: true,
     items: [],

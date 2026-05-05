@@ -10,6 +10,7 @@ import {
   mergeChunks,
   renameChunks,
   reorderChunks,
+  setSceneFieldSize,
   setChunkKind,
   toggleSplitLine,
   updateChunk,
@@ -298,6 +299,14 @@ export function useAtknotApp() {
     });
   }
 
+  function updateSceneImageSize(id: string, size: { fieldWidth?: number; fieldHeight?: number }) {
+    dispatch({
+      type: 'setChunks',
+      chunks: setSceneFieldSize(state.present.chunks, id, size),
+      message: 'sceneImageSizeUpdated',
+    });
+  }
+
   function moveChunk(activeId: string, targetId: string) {
     dispatch({
       type: 'setChunks',
@@ -380,6 +389,7 @@ export function useAtknotApp() {
     updateBody,
     updateTitle,
     updateKind,
+    updateSceneImageSize,
     moveChunk,
     setSplitLine,
     addSelectedSplitLines,

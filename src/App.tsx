@@ -219,6 +219,7 @@ export default function App() {
     updateBody,
     updateTitle,
     updateKind,
+    updateSceneImageSize,
     moveChunk,
     setSplitLine,
     addSelectedSplitLines,
@@ -503,6 +504,15 @@ export default function App() {
     gutterRef.current.scrollTop = textareaRef.current.scrollTop;
   }
 
+  function parsePositiveIntegerInput(value: string): number | undefined {
+    if (value.trim() === '') {
+      return undefined;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -665,6 +675,44 @@ export default function App() {
                 </div>
               </div>
 
+              {selectedChunk.kind === 'SCENE' ? (
+                <div className="scene-size-editor">
+                  <span>{t(language, 'sceneImageSize')}</span>
+                  <div className="scene-size-grid">
+                    <label>
+                      <span>{t(language, 'sceneImageWidth')}</span>
+                      <input
+                        type="number"
+                        min="1"
+                        inputMode="numeric"
+                        value={selectedChunk.fieldWidth ?? ''}
+                        onChange={(event) =>
+                          updateSceneImageSize(selectedChunk.id, {
+                            fieldWidth: parsePositiveIntegerInput(event.target.value),
+                            fieldHeight: selectedChunk.fieldHeight,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>{t(language, 'sceneImageHeight')}</span>
+                      <input
+                        type="number"
+                        min="1"
+                        inputMode="numeric"
+                        value={selectedChunk.fieldHeight ?? ''}
+                        onChange={(event) =>
+                          updateSceneImageSize(selectedChunk.id, {
+                            fieldWidth: selectedChunk.fieldWidth,
+                            fieldHeight: parsePositiveIntegerInput(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="editor-body">
                 <span>{t(language, 'body')}</span>
                 <div className="editor-frame">
@@ -776,7 +824,16 @@ export default function App() {
           <button type="button" onClick={() => insertAfter(contextMenu.targetId)}>
             {t(language, 'insertBelow')}
           </button>
-          <button type="button" onClick={() => removeSelected([contextMenu.targetId])}>
+          <button
+            type="button"
+            onClick={() =>
+              removeSelected(
+                state.present.selectedIds.includes(contextMenu.targetId)
+                  ? state.present.selectedIds
+                  : [contextMenu.targetId],
+              )
+            }
+          >
             {t(language, 'delete')}
           </button>
           <button type="button" disabled={state.present.selectedIds.length < 2} onClick={() => mergeSelected()}>

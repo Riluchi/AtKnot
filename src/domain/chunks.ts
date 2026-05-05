@@ -111,10 +111,10 @@ export function splitChunk(chunk: Chunk): Chunk[] {
       }
 
       return {
+        ...chunk,
         id: index === 0 ? chunk.id : crypto.randomUUID(),
         title: index === 0 ? chunk.title : `${chunk.title} (${index + 1})`,
         body: segment,
-        kind: chunk.kind,
         splitLines: [],
       };
     });
@@ -147,6 +147,24 @@ export function applySplitToChunk(chunks: Chunk[], id: string): { chunks: Chunk[
 
 export function setChunkKind(chunks: Chunk[], ids: string[], kind: ChunkKind): Chunk[] {
   return chunks.map((chunk) => (ids.includes(chunk.id) ? { ...chunk, kind } : chunk));
+}
+
+export function setSceneFieldSize(
+  chunks: Chunk[],
+  id: string,
+  size: { fieldWidth?: number; fieldHeight?: number },
+): Chunk[] {
+  return updateChunk(chunks, id, (chunk) => {
+    if (chunk.kind !== 'SCENE') {
+      return chunk;
+    }
+
+    return {
+      ...chunk,
+      fieldWidth: size.fieldWidth,
+      fieldHeight: size.fieldHeight,
+    };
+  });
 }
 
 export function toggleSplitLine(chunk: Chunk, line: number): Chunk {
